@@ -12,6 +12,19 @@ UTR_LENGTH = 200
 
 
 def get_gene_info_from_request(all_gene_info: dict) -> dict:
+    """Return a dictionary that stores the required information from a gene in order to be able to request from
+    Ensembl's REST API the promoter and 3'UTR sequences in relation to that gene.
+
+    <all_gene_info> is a dictionary that is the result of calling .json() on a response object generated using Ensembl's
+    REST API. The url to get the response was of the format:
+        <ENSEMBL_REST>/lookup/id/<gene_id>?expand=1;species=<species>
+
+    This is the information that is of interest that can be obtained from the response from this fetch request:
+    - start and end coordinates of the transcript and coding region of the gene
+    - strand, either +1 (forward) or -1 (reverse)
+    - region that the gene is in (e.g. chromosome number)
+    """
+
     filtered_gene_info = {}
 
     # Getting the information
@@ -32,8 +45,13 @@ def get_gene_info_from_request(all_gene_info: dict) -> dict:
     return filtered_gene_info
 
 
-def fetch_ranged_sequence(start, end, strand, chromosome, length, species, seq_type):
-    """seq_type can be either 'promoter' or '3UTR'"""
+def fetch_ranged_sequence(start, end, strand, chromosome, length, species, seq_type) -> str:
+    """Return a string of length <length> that represents the <seq_type> associated with the gene whose position in
+    <chromosome> for <species> is bounded by the <start> and <end> coordinates, with strand <strand>.
+
+    <seq_type> can be either 'promoter' or '3UTR'
+    <strand> can be either +1 (forward) or -1 (reverse)
+    """
     # Finding out the coordinate bounds for <seq_type> based on the <start> and <end> coordinates of the gene
     if (seq_type == "3UTR" and strand == -1) or (seq_type == "promoter" and strand == 1):
         seq_start = start - length
@@ -55,7 +73,15 @@ def fetch_ranged_sequence(start, end, strand, chromosome, length, species, seq_t
     return sequence
 
 
-def accumulate_source_orthologs_info(gene_ids, print_progress=True):
+def accumulate_source_orthologs_info(gene_ids: list[str], print_progress=True) -> dict:
+    """Return a dictionary of the format:
+    key = gene_id associated to <SOURCE_SPECIES> (string)
+    value = a dictionary of the format:
+        key = species name (string)
+        value = a dictionary, which is the return value of calling the function <get_gene_info_from_request> which
+            contains enough information about the gene_id in order to be able to fetch the DNA sequences of the
+            promoter and 3'UTR associated to it.
+    """
     source_orthologs_info = {}
     num_genes = len(gene_ids)
     i = 1
@@ -89,7 +115,19 @@ def accumulate_source_orthologs_info(gene_ids, print_progress=True):
     return source_orthologs_info
 
 
-def get_source_orthologs_sequences(source_orthologs_info, print_progress=True):
+def get_source_orthologs_sequences(source_orthologs_info, print_progress=True) -> dict:
+    """Return a dictionary of the format:
+    key = gene_id associated to <SOURCE_SPECIES> (string)
+    value = a dictionary of the format:
+        key = species name (string)
+        value = a dictionary which contains two key-value pairs:
+            promoter_sequence (string): DNA sequence of the promoter associated to the gene_id of length
+                <PROMOTER_LENGTH>.
+            3UTR_sequence (string): DNA sequence of the 3'UTR associated to the gene_id of length <UTR_LENGTH>.
+
+    The parameter <source_orthologs_info> is the return value of calling the function <accumulate_source_orthologs_info>
+    on a list of Ensembl protein-coding genes for <SOURCE_SPECIES>.
+    """
     num_genes = len(source_orthologs_info)
     i = 1
     source_orthologs_sequences = {}

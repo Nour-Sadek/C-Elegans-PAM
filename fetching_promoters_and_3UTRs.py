@@ -1,6 +1,8 @@
 import pandas as pd
 import requests
 import json
+import os
+import time
 
 # Constants
 
@@ -45,7 +47,7 @@ def get_gene_info_from_request(all_gene_info: dict) -> dict:
     return filtered_gene_info
 
 
-def fetch_ranged_sequence(start, end, strand, chromosome, length, species, seq_type) -> str:
+def fetch_ranged_sequence(start, end, strand, chromosome, length, species, seq_type):
     """Return a string of length <length> that represents the <seq_type> associated with the gene whose position in
     <chromosome> for <species> is bounded by the <start> and <end> coordinates, with strand <strand>.
 
@@ -73,16 +75,13 @@ def fetch_ranged_sequence(start, end, strand, chromosome, length, species, seq_t
     return sequence
 
 
-def accumulate_source_orthologs_info(gene_ids: list[str], print_progress=True) -> dict:
-    """Return a dictionary of the format:
-    key = gene_id associated to <SOURCE_SPECIES> (string)
-    value = a dictionary of the format:
-        key = species name (string)
-        value = a dictionary, which is the return value of calling the function <get_gene_info_from_request> which
-            contains enough information about the gene_id in order to be able to fetch the DNA sequences of the
-            promoter and 3'UTR associated to it.
+def accumulate_source_orthologs_info(gene_ids, print_progress=True):
+    """For every protein-coding gene in <gene_ids> save a json file in <general_info> directory that stores enough
+    information about the gene in order to be able to fetch the DNA sequences of the promoter and 3'UTR associated
+    to it in the format:
+    key: species name (string)
+    value: dictionary that contains information about the start and end coordinates, strand, and chromosome.
     """
-    source_orthologs_info = {}
     num_genes = len(gene_ids)
     i = 1
     for gene_id in gene_ids:
@@ -92,7 +91,11 @@ def accumulate_source_orthologs_info(gene_ids: list[str], print_progress=True) -
         r = requests.get(url, headers={"content-Type": "application/json"})
         if r.ok:
             curr_gene_info[SOURCE_SPECIES] = get_gene_info_from_request(r.json())
+        else:
+            print(f"Error fetching gene info for {gene_id} in {SOURCE_SPECIES}: {r.status_code} - {r.text}")
+
         # Get gene info for ortholog species
+        print(f"Fetching orthologs for {gene_id} in {SOURCE_SPECIES}...")
         url = f"{ENSEMBL_REST}/homology/id/{SOURCE_SPECIES}/{gene_id}?type=orthologues;compara={COMPARA};content-type=application/json"
         r = requests.get(url, headers={"content-Type": "application/json"})
         if r.ok:
@@ -104,36 +107,47 @@ def accumulate_source_orthologs_info(gene_ids: list[str], print_progress=True) -
                     target_gene_id = ortholog["target"]["id"]
                     url = f"{ENSEMBL_REST}/lookup/id/{target_gene_id}?expand=1;species={target_species}"
                     r = requests.get(url, headers={"content-Type": "application/json"})
+                    time.sleep(0.10)
                     if r.ok:
                         curr_gene_info[target_species] = get_gene_info_from_request(r.json())
-        source_orthologs_info[gene_id] = curr_gene_info
+                    else:
+                        print(f"Error fetching gene info for {target_gene_id} in {target_species}: "
+                              f"{r.status_code} - {r.text}")
+        else:
+            print(f"Error fetching orthologs for {gene_id} in {SOURCE_SPECIES}: {r.status_code} - {r.text}")
+        # Save the info for this gene as a json file
+        with open(f"./general_info/{SOURCE_SPECIES}_{gene_id}.json", "w") as file:
+            json.dump(curr_gene_info, file, indent=4)
         if print_progress:
             if i % 100 == 0:
                 print(f"Information of {i} {SOURCE_SPECIES} genes and their orthologs out of {num_genes} have been "
                       f"collected.")
             i = i + 1
-    return source_orthologs_info
 
 
-def get_source_orthologs_sequences(source_orthologs_info, print_progress=True) -> dict:
-    """Return a dictionary of the format:
-    key = gene_id associated to <SOURCE_SPECIES> (string)
-    value = a dictionary of the format:
-        key = species name (string)
-        value = a dictionary which contains two key-value pairs:
-            promoter_sequence (string): DNA sequence of the promoter associated to the gene_id of length
-                <PROMOTER_LENGTH>.
-            3UTR_sequence (string): DNA sequence of the 3'UTR associated to the gene_id of length <UTR_LENGTH>.
+def get_source_orthologs_sequences(gene_ids, print_progress=True) -> None:
+    """For every protein-coding gene in <gene_ids> save a json file in <promoter_sequences> or <3UTR_sequences>
+    directories that stores the promoter and 3'UTR DNA sequences respectively associated to each ortholog gene in the
+    format:
+    key: species name (string)
+    value: DNA sequence, promoter of length <PROMOTER_LENGTH> or 3'UTR of length <UTR_LENGTH> (string)
 
-    The parameter <source_orthologs_info> is the return value of calling the function <accumulate_source_orthologs_info>
-    on a list of Ensembl protein-coding genes for <SOURCE_SPECIES>.
+    Within this function, it reads in the files in directory <general_info> which were created after calling the
+    function <accumulate_source_orthologs_info>, which store the required information for each ortholog species to
+    extract the associated promoter and 3'UTR sequences.
     """
-    num_genes = len(source_orthologs_info)
+    num_genes = len(gene_ids)
     i = 1
-    source_orthologs_sequences = {}
-    for gene_id in source_orthologs_info:
-        curr_gene_sequences_info = {}
-        curr_gene_species_info = source_orthologs_info[gene_id]
+    for gene_id in gene_ids:
+        # Read the general info for this gene_id
+        file_path = f"./general_info/{SOURCE_SPECIES}_{gene_id}.json"
+        if os.path.exists(file_path):
+            with open(file_path, "r") as f:
+                curr_gene_species_info = json.load(f)
+        else:
+            continue
+        curr_gene_promoters_info = {}
+        curr_gene_UTRs_info = {}
         for species, gene_info in curr_gene_species_info.items():
             promoter_sequence = fetch_ranged_sequence(gene_info["transcription_start_site"],
                                                       gene_info["transcription_end_site"],
@@ -143,39 +157,36 @@ def get_source_orthologs_sequences(source_orthologs_info, print_progress=True) -
                                                  gene_info["translation_end_site"],
                                                  gene_info["strand"], gene_info["chromosome"],
                                                  UTR_LENGTH, species, "3UTR")
-            curr_gene_sequences_info[species] = {"promoter_sequence": promoter_sequence,
-                                                 "3UTR_sequence": UTR_sequence}
-        source_orthologs_sequences[gene_id] = curr_gene_sequences_info
+            curr_gene_promoters_info[species] = promoter_sequence
+            curr_gene_UTRs_info[species] = UTR_sequence
+        # Save the promoter and 3'UTR sequences info for this gene as a json file
+        with open(f"./promoter_sequences/{SOURCE_SPECIES}_{gene_id}.json", "w") as file:
+            json.dump(curr_gene_promoters_info, file, indent=4)
+        with open(f"./3UTR_sequences/{SOURCE_SPECIES}_{gene_id}.json", "w") as file:
+            json.dump(curr_gene_UTRs_info, file, indent=4)
         if print_progress:
             if i % 100 == 0:
                 print(f"Promoter and 3'UTR sequences of {i} {SOURCE_SPECIES} genes and their orthologs out of "
                       f"{num_genes} have been processed.")
             i = i + 1
-    return source_orthologs_sequences
 
 
 if __name__ == "__main__":
-
     # A list of gene ids was extracted from the gtf file in R for <SOURCE_SPECIES> and is being imported here
     gene_ids = pd.read_excel("./sgd_gene_ids.xlsx")
     gene_ids = list(gene_ids["gene_id"])
 
     print("This program runs in a two step process.")
-    print(f"Step 1 of 2: Create a dictionary that contains the required information for each gene of {SOURCE_SPECIES} "
+    print(f"Step 1 of 2: Save the required information for each gene of {SOURCE_SPECIES} "
           f"and its orthologs from Ensembl.")
 
-    source_orthologs_info = accumulate_source_orthologs_info(gene_ids, print_progress=True)
-    # Save the dictionary as a json file
-    with open("source_orthologs_info.json", "w") as file:
-        json.dump(source_orthologs_info, file, indent=4)
+    accumulate_source_orthologs_info(gene_ids, print_progress=True)
 
-    print("Finished generating the dictionary, and it was successfully saved as a json object. Now on to step 2.")
-    print("Step 2 of 2: Create a dictionary that uses the saved information to determine the promoter and 3'UTR "
-          "sequences of each gene.")
+    print("Finished fetching, and general information for the gene ids were successfully saved as json objects. "
+          "Now on to step 2.")
+    print("Step 2 of 2: Use the saved information to determine the promoter and 3'UTR sequences of each gene and save "
+          "as json objects.")
 
-    source_orthologs_sequences = get_source_orthologs_sequences(source_orthologs_info, print_progress=True)
-    # Save the dictionary as a json file
-    with open("source_orthologs_sequences.json", "w") as file:
-        json.dump(source_orthologs_sequences, file, indent=4)
+    get_source_orthologs_sequences(gene_ids, print_progress=True)
 
     print("Program Finished!")

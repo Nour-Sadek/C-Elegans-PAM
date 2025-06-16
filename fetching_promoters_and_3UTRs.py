@@ -7,9 +7,10 @@ import time
 # Constants
 
 ENSEMBL_REST = "https://rest.ensembl.org"
-SOURCE_SPECIES = "saccharomyces_cerevisiae"
-COMPARA = "fungi"
-PROMOTER_LENGTH = 500
+SOURCE_SPECIES = "caenorhabditis_elegans"
+GENE_IDS_PATH = "./celegans_gene_ids.xlsx"
+COMPARA = "metazoa"
+PROMOTER_LENGTH = 600
 UTR_LENGTH = 200
 
 
@@ -27,22 +28,26 @@ def get_gene_info_from_request(all_gene_info: dict) -> dict:
     - region that the gene is in (e.g. chromosome number)
     """
 
-    filtered_gene_info = {}
+    canonical_transcript_gene_info = {}
 
-    # Getting the information
-    translation_start_site = all_gene_info["Transcript"][0]["Translation"]["start"]
-    translation_end_site = all_gene_info["Transcript"][0]["Translation"]["end"]
-    transcription_start_site = all_gene_info["start"]
-    transcription_end_site = all_gene_info["end"]
-    strand = all_gene_info["strand"]
-    chromosome = all_gene_info["seq_region_name"]
+    # Getting the information from the canonical transcript
+    for transcript in all_gene_info["Transcript"]:
+        if transcript["is_canonical"] == 1:
+            canonical_transcript_gene_info = transcript
+            break
+    translation_start_site = canonical_transcript_gene_info["Translation"]["start"]
+    translation_end_site = canonical_transcript_gene_info["Translation"]["end"]
+    transcription_start_site = canonical_transcript_gene_info["start"]
+    transcription_end_site = canonical_transcript_gene_info["end"]
+    strand = canonical_transcript_gene_info["strand"]
+    chromosome = canonical_transcript_gene_info["seq_region_name"]
+
     # Saving the information in a dictionary specific to <target_species>
-    filtered_gene_info["translation_start_site"] = translation_start_site
-    filtered_gene_info["translation_end_site"] = translation_end_site
-    filtered_gene_info["transcription_start_site"] = transcription_start_site
-    filtered_gene_info["transcription_end_site"] = transcription_end_site
-    filtered_gene_info["strand"] = strand
-    filtered_gene_info["chromosome"] = chromosome
+    filtered_gene_info = {"translation_start_site": translation_start_site,
+                          "translation_end_site": translation_end_site,
+                          "transcription_start_site": transcription_start_site,
+                          "transcription_end_site": transcription_end_site,
+                          "strand": strand, "chromosome": chromosome}
 
     return filtered_gene_info
 
@@ -119,7 +124,7 @@ def accumulate_source_orthologs_info(gene_ids, print_progress=True):
         with open(f"./general_info/{SOURCE_SPECIES}_{gene_id}.json", "w") as file:
             json.dump(curr_gene_info, file, indent=4)
         if print_progress:
-            if i % 100 == 0:
+            if i % 1 == 0:
                 print(f"Information of {i} {SOURCE_SPECIES} genes and their orthologs out of {num_genes} have been "
                       f"collected.")
             i = i + 1
@@ -165,7 +170,7 @@ def get_source_orthologs_sequences(gene_ids, print_progress=True) -> None:
         with open(f"./3UTR_sequences/{SOURCE_SPECIES}_{gene_id}.json", "w") as file:
             json.dump(curr_gene_UTRs_info, file, indent=4)
         if print_progress:
-            if i % 100 == 0:
+            if i % 1 == 0:
                 print(f"Promoter and 3'UTR sequences of {i} {SOURCE_SPECIES} genes and their orthologs out of "
                       f"{num_genes} have been processed.")
             i = i + 1
@@ -173,7 +178,7 @@ def get_source_orthologs_sequences(gene_ids, print_progress=True) -> None:
 
 if __name__ == "__main__":
     # A list of gene ids was extracted from the gtf file in R for <SOURCE_SPECIES> and is being imported here
-    gene_ids = pd.read_excel("./sgd_gene_ids.xlsx")
+    gene_ids = pd.read_excel(GENE_IDS_PATH)
     gene_ids = list(gene_ids["gene_id"])
 
     print("This program runs in a two step process.")

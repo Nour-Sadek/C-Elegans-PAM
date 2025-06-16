@@ -1,12 +1,14 @@
 import numpy as np
+import pandas as pd
 import os
 import pickle
+import sys
 
 # Constants
 
 PFM_DIR = "./20250615154045_JASPAR2024_individual_matrices_1110029_jaspar"
-FILES_EXTENSION = ".jaspar"
-SOURCE_SPECIES = "caenorhabditis_elegans"
+SPECIES = "caenorhabditis_elegans"  # or "saccharomyces_cerevisiae" but only with TF
+MOTIF_TYPE = "TF"  # or "RBP"
 
 
 # Read in PFMs from JASPAR
@@ -46,6 +48,20 @@ def read_yetfasco_pfm(file_path):
     return motif_name, pfm
 
 
+def read_rbp_pfm(file_path):
+    # Read in the file
+    with open(file_path, "r") as file:
+        lines = file.readlines()
+
+    # Get the matrix values
+    content = lines[1:]
+    pfm = [list(map(float, line.strip().split()[1:])) for line in content]
+    pfm = np.array(pfm)  # shape (motif_length x 4)
+    pfm = pfm.T  # shape (4 x motif_length)
+
+    return pfm
+
+
 def pfm_to_pwm(pfm, given_as_counts=True, pseudo_counts=1):
     """pfm_matrix is of the shape (4, motif_length) where the rows represent the nucleotides and the columns represent
     the position of the nucleotides in the motif.
@@ -75,16 +91,54 @@ def pfm_to_pwm(pfm, given_as_counts=True, pseudo_counts=1):
 # Key: name of motif (string)
 # Value: PWM (numpy matrix)
 
+if __name__ == "__main__":
 
-pwms = {}
+    pwms = {}
 
-for file_name in os.listdir(PFM_DIR):
-    if file_name.endswith(FILES_EXTENSION):
-        path = os.path.join(PFM_DIR, file_name)
-        motif_name, pfm = read_jaspar_pfm(path)
-        pwms[motif_name] = pfm_to_pwm(pfm)
+    if SPECIES == "caenorhabditis_elegans" and MOTIF_TYPE == "RBP":
 
-# Save the dictionary of motif data as a pickle file
-pwms_file_name = f"PWMs_of_TFs_{SOURCE_SPECIES}.pkl"
-with open(pwms_file_name, "wb") as file:
-    pickle.dump(pwms, file)
+        # Reading in the information
+        rbp_info = pd.read_excel("./Caenorhabditis_elegans_2025_06_16_5_03_am/RBP_Information.xlsx",
+                                 usecols=["Motif_ID", "RBP_Name"])
+        rbp_info = rbp_info[rbp_info["Motif_ID"] != "."]
+
+        for motif_id in rbp_info["Motif_ID"].unique():
+            file_name = f"{motif_id}.txt"
+            dir_name = "./Caenorhabditis_elegans_2025_06_16_5_03_am/pwms_all_motifs"
+            if file_name in os.listdir(dir_name):
+                path = os.path.join(dir_name, file_name)
+                # Get the motif_name
+                motifs = rbp_info[rbp_info["Motif_ID"] == motif_id]["RBP_Name"]
+                if len(motifs) > 1:
+                    motif_name = "_".join(list(motifs))
+                else:
+                    motif_name = motifs.item()
+                # Get the PWM
+                pfm = read_rbp_pfm(path)
+                pwms[motif_name] = pfm_to_pwm(pfm, given_as_counts=False)
+
+    elif SPECIES == "caenorhabditis_elegans" and MOTIF_TYPE == "TF":
+
+        dir_name = "./20250615154045_JASPAR2024_individual_matrices_1110029_jaspar"
+        for file_name in os.listdir(dir_name):
+            if file_name.endswith(".jaspar"):
+                path = os.path.join(dir_name, file_name)
+                motif_name, pfm = read_jaspar_pfm(path)
+                pwms[motif_name] = pfm_to_pwm(pfm)
+
+    elif SPECIES == "saccharomyces_cerevisiae" and MOTIF_TYPE == "TF":
+        dir_name = "./saccharomyces_cerevisiae/Expert_PFMs/1.02/ALIGNED_ENOLOGO_FORMAT_PFMS"
+        for file_name in os.listdir(dir_name):
+            if file_name.endswith(".pfm"):
+                path = os.path.join(dir_name, file_name)
+                motif_name, pfm = read_jaspar_pfm(path)
+                pwms[motif_name] = pfm_to_pwm(pfm)
+
+    else:
+        print("No PWMs to generate. Please check the values of the SPECIES and MOTIF_TYPE constants")
+        sys.exit()
+
+    # Save the dictionary of motif data as a pickle file
+    pwms_file_name = f"PWMs_of_{MOTIF_TYPE}_for_{SPECIES}.pkl"
+    with open(pwms_file_name, "wb") as file:
+        pickle.dump(pwms, file)

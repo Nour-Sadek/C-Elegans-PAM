@@ -7,30 +7,20 @@ import pickle
 import json
 import os
 
+# url to metazoa ensembl organisms
+# https://metazoa.ensembl.org/index.html
+
 # Constants
 
-SOURCE_SPECIES = "saccharomyces_cerevisiae"
-PWM_FILE_PATH = f"./PWMs_of_{SOURCE_SPECIES}.pkl"
+SOURCE_SPECIES = "caenorhabditis_elegans"
+MOTIF_TYPE = "TF"
+PWM_FILE_PATH = f"./PWMs_of_{MOTIF_TYPE}_for_{SOURCE_SPECIES}.pkl"
 PROMOTERS_DIR = "./promoter_sequences"
 UTRs_DIR = "./3UTR_sequences"
-BASE_TO_INDEX = {'A': 0, 'T': 1, 'G': 2, 'C': 3}
-REVERSE_ORDER = [1, 0, 3, 2]
-PROMOTER_LENGTH = 500
+BASE_TO_INDEX = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
+REVERSE_ORDER = [3, 2, 1, 0]
+PROMOTER_LENGTH = 600
 UTR_LENGTH = 200
-# should be Ensembl-compatible names
-ORTHOLOGOUS_SPECIES = [
-    "ashbya_gossypii", "candida_albicans", "candida_auris", "candida_glabrata",
-    "candida_parapsilosis", "candida_tropicalis", "clavispora_lusitaniae",
-    "debaryomyces_fabryi", "debaryomyces_hansenii", "eremothecium_cymbalariae",
-    "eremothecium_gossypii", "kazachstania_africana", "kazachstania_naganishii",
-    "kluyveromyces_dobzhanskii", "kluyveromyces_lactis", "kluyveromyces_marxianus",
-    "komagataella_pastoris", "komagataella_phaffii", "lachancea_dasiensis",
-    "lachancea_lanzarotensis", "lodderomyces_elongisporus", "naumovozyma_castellii",
-    "naumovozyma_dairenensis", "rhodotorula_graminis", "saccharomyces_arboricola",
-    "saccharomyces_eubayanus", "saccharomyces_boulardii", "tetrapisispora_blattae",
-    "tetrapisispora_phaffii", "tortispora_caseinolytica", "torulaspora_delbrueckii",
-    "vanderwaltozyma_polyspora", "yarrowia_lipolytica", "zygosaccharomyces_rouxii"
-]
 
 
 def one_hot_encode(sequence: str) -> np.ndarray:
@@ -118,6 +108,30 @@ def scan_scrambled(conv, filters, seq_tensor):
     return max_scores
 
 
+def determine_eligible_genes(sequences_dir, seq_type, min_orthologous_species):
+    eligible_genes = 0
+    total_num_genes = 0
+    for file_name in os.listdir(sequences_dir):
+        # Get the sequences for <SOURCE_SPECIES> and the orthologous species
+        path = os.path.join(sequences_dir, file_name)
+        with open(path, "r") as file:
+            sequences_per_species = json.load(file)
+
+        # Only keep the species that are part of <ORTHOLOGOUS_SPECIES>
+        # species_of_interest = list(set(sequences_per_species.keys()) & set(ORTHOLOGOUS_SPECIES))
+
+        # Only keep those species whose corresponding sequence is a valid one
+        # (only contain A, T, G, C and are of valid length)
+        species_of_interest_keep = [species for species in sequences_per_species.keys() if
+                                    valid_sequence(sequences_per_species[species], seq_type)]
+
+        # If the remaining orthologous species is less than <min_orthologous_species>, then this gene is not eligible
+        if len(species_of_interest_keep) >= min_orthologous_species:
+            eligible_genes = eligible_genes + 1
+            total_num_genes = total_num_genes + len(species_of_interest_keep)
+    return eligible_genes, total_num_genes
+
+
 def build_representation(pwms, seq_type, min_orthologous_species):
     # Raise Value Error if incorrect <seq_type> is provided
     correct_seq_type(seq_type)
@@ -128,6 +142,8 @@ def build_representation(pwms, seq_type, min_orthologous_species):
         sequences_dir = UTRs_DIR
 
     representation = {}
+
+    i = 1
 
     for file_name in os.listdir(sequences_dir):
 
@@ -143,15 +159,17 @@ def build_representation(pwms, seq_type, min_orthologous_species):
             sequences_per_species = json.load(file)
 
         # Only keep the species that are part of <ORTHOLOGOUS_SPECIES>
-        species_of_interest = list(set(sequences_per_species.keys()) & set(ORTHOLOGOUS_SPECIES))
+        # species_of_interest = list(set(sequences_per_species.keys()) & set(ORTHOLOGOUS_SPECIES))
 
         # Only keep those species whose corresponding sequence is a valid one
         # (only contain A, T, G, C and are of valid length)
-        species_of_interest_keep = [species for species in species_of_interest if
+        species_of_interest_keep = [species for species in sequences_per_species.keys() if
                                     valid_sequence(sequences_per_species[species], seq_type)]
 
         # If the remaining orthologous species is less than <min_orthologous_species>, don't process
         if len(species_of_interest_keep) < min_orthologous_species:
+            print(f"{i}: {gene_id} won't be processed; minimum orthologous species of {min_orthologous_species} was not met.")
+            i = i + 1
             continue
 
         # One-hot encode the sequences
@@ -207,11 +225,14 @@ def build_representation(pwms, seq_type, min_orthologous_species):
 
         # Save the z-scores of all pwms for this <gene_id>
         representation[gene_id] = curr_gene_z_scores
+        print(f"PAM scores for {i}: {gene_id} have been processed")
+        i = i + 1
 
     return representation
 
 
 if __name__ == "__main__":
+
     # Load the PWM dictionary
     with open(PWM_FILE_PATH, "rb") as file:
         pwms = pickle.load(file)
@@ -224,3 +245,15 @@ if __name__ == "__main__":
     file_name = f"{seq_type}_representation_for_{SOURCE_SPECIES}.json"
     with open(file_name, "w") as file:
         json.dump(representation, file, indent=4)
+
+    """
+    eligible_genes, total_num_genes = determine_eligible_genes(PROMOTERS_DIR, "promoter", 10)
+    print(f"There are {eligible_genes} genes, with {total_num_genes} total promoter sequences")
+    # There are 5596 genes, with 322077 total promoter sequences (min_orthologous_species = 10)
+    # There are 19985 genes, with 363477 total promoter sequences (min_orthologous_species = 1)
+
+    eligible_genes, total_num_genes = determine_eligible_genes(UTRs_DIR, "3UTR", 10)
+    print(f"There are {eligible_genes} genes, with {total_num_genes} total 3'UTR sequences")
+    # There are 5705 genes, with 331660 total 3'UTR sequences (min_orthologous_species = 10)
+    # There are 19985 genes, with 372990 total 3'UTR sequences (min_orthologous_species = 1)
+    """

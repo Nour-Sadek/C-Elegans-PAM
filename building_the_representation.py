@@ -13,7 +13,7 @@ import os
 # Constants
 
 SOURCE_SPECIES = "caenorhabditis_elegans"
-MOTIF_TYPE = "TF"
+MOTIF_TYPE = "TF"  # "TF" for promoter or "RBP" for 3UTR
 PWM_FILE_PATH = f"./PWMs_of_{MOTIF_TYPE}_for_{SOURCE_SPECIES}.pkl"
 PROMOTERS_DIR = "./promoter_sequences"
 UTRs_DIR = "./3UTR_sequences"
@@ -23,7 +23,7 @@ PROMOTER_LENGTH = 600
 UTR_LENGTH = 200
 
 
-def one_hot_encode(sequence: str) -> np.ndarray:
+def one_hot_encode(sequence: str):
     L = len(sequence)
     tensor = torch.zeros(4, L, dtype=torch.float32)
     for index, base in enumerate(sequence.upper()):
@@ -47,14 +47,16 @@ def pwm_to_filter(pwm):
     return pwm.unsqueeze(0)
 
 
-def calculate_z_score(scrambled_match_scores, real_match_score):
-    """Both are torch and not numpy arrays"""
+def calculate_z_score(PAM_scores_scrambled, PAM_score_real):
+    """<PAM_scores_scrambled> is a tensor of shape (n,) and PAM_score_real is a float."""
+    PAM_scores_scrambled = PAM_scores_scrambled.detach().numpy()
+
     # Compute mean and std of scrambled scores
-    mean = scrambled_match_scores.mean()
-    std = scrambled_match_scores.std(unbiased=False)  # population std
+    mean = np.mean(PAM_scores_scrambled)
+    std = np.std(PAM_scores_scrambled)
 
     # Compute z-score between real score and distribution
-    z_score = (real_match_score - mean) / std
+    z_score = (PAM_score_real - mean) / std
 
     return z_score
 
@@ -79,8 +81,8 @@ def valid_sequence(sequence: str, seq_type) -> bool:
 def scan_sequence(pwm, seq_tensor):
     conv_filter = pwm_to_filter(pwm)
     conv_result = F.conv1d(seq_tensor, conv_filter)
-    max_score = torch.max(conv_result).item()
-    return max_score
+    # max_score = torch.max(conv_result).item()
+    return conv_result
 
 
 def scramble_pwm(pwm, n=100):
@@ -102,10 +104,11 @@ def scan_scrambled(conv, filters, seq_tensor):
         conv.weight.copy_(filters)
     conv_result = conv(seq_tensor)
     # Max pool over the sequence positions
-    max_scores, _ = torch.max(conv_result, dim=2)  # shape: (1, n)
-    max_scores = max_scores.squeeze(0)  # flatten to shape: (n)
+    # max_scores, _ = torch.max(conv_result, dim=2)  # shape: (1, n)
+    # max_scores = max_scores.squeeze(0)  # flatten to shape: (n)
 
-    return max_scores
+    # return max_scores.tolist()
+    return conv_result
 
 
 def determine_eligible_genes(sequences_dir, seq_type, min_orthologous_species):
@@ -186,16 +189,21 @@ def build_representation(pwms, seq_type, min_orthologous_species):
             L = pwm.shape[1]
 
             # Get the best match score for this <pwm> over each orthologous sequences of this <gene_id>
-            best_matches = []
+            max_conv_scores_per_seq = []
             if seq_type == "promoter":
                 rev_pwm = get_pwm_reverse_complement(pwm)
             for one_hot_encoded_sequence in one_hot_encoded_sequences_per_species.values():
-                fwd_best_match = scan_sequence(pwm, one_hot_encoded_sequence)
+                fwd_conv_result = scan_sequence(pwm, one_hot_encoded_sequence)
                 if seq_type == "promoter":
-                    rev_best_match = scan_sequence(rev_pwm, one_hot_encoded_sequence)
-                    best_matches.append(max(fwd_best_match, rev_best_match))
+                    rev_conv_result = scan_sequence(rev_pwm, one_hot_encoded_sequence)
+                    # Get the maximum of the rev/fwd at each position
+                    best_conv_of_both = torch.max(fwd_conv_result, rev_conv_result)
+                    # Get the max score of this convolution (max pooling) after considering both the fwd and rev PWM
+                    max_conv_scores_per_seq.append(torch.max(best_conv_of_both).item())
                 else:  # seq_type == "3UTR"
-                    best_matches.append(fwd_best_match)
+                    # Get the max score of this convolution after considering the fwd PWM only
+                    max_conv_scores_per_seq.append(torch.max(fwd_conv_result).item())
+            PAM_score_real = np.mean(max_conv_scores_per_seq)
 
             # Normalize this phylogenetically averaged score
             n = 100
@@ -203,22 +211,23 @@ def build_representation(pwms, seq_type, min_orthologous_species):
             conv = nn.Conv1d(in_channels=4, out_channels=n, kernel_size=L, bias=False)
             if seq_type == "promoter":
                 rev_filters = torch.tensor(scramble_pwm(get_pwm_reverse_complement(pwm), n))
-            scrambled_best_matches = []
+            max_PWMs_scores_per_seq = []
             for one_hot_encoded_sequence in one_hot_encoded_sequences_per_species.values():
-                fwd_max_scores = scan_scrambled(conv, fwd_filters, one_hot_encoded_sequence)
+                fwd_conv_results = scan_scrambled(conv, fwd_filters,
+                                                  one_hot_encoded_sequence)  # shape (1, n, len_after_conv)
                 if seq_type == "promoter":
-                    rev_max_scores = scan_scrambled(conv, rev_filters, one_hot_encoded_sequence)
-                    max_scores_from_both = [max(fwd_score, rev_score) for fwd_score, rev_score in
-                                            zip(fwd_max_scores, rev_max_scores)]
-                    scrambled_best_matches.append(torch.tensor(max_scores_from_both, dtype=torch.float32))
+                    rev_conv_results = scan_scrambled(conv, rev_filters,
+                                                      one_hot_encoded_sequence)  # shape (1, n, len_after_conv)
+                    # Get the maximum of the rev/fwd at each position
+                    best_convs_of_both = torch.max(fwd_conv_results, rev_conv_results)  # shape (1, n, len_after_conv)
+                    # Get the max match score for each PWM
+                    max_PWMs_scores_per_seq.append(torch.max(best_convs_of_both, dim=2).values)  # shape (1, n)
                 else:  # seq_type == "3UTR"
-                    scrambled_best_matches.append(fwd_max_scores)
+                    max_PWMs_scores_per_seq.append(torch.max(fwd_conv_results, dim=2).values)  # shape (1, n)
+            PAM_scores_scrambled = torch.stack(max_PWMs_scores_per_seq).mean(dim=0).squeeze(0)  # shape (n,)
 
-            # Determine the z-score between the real match score and the distribution
-            # of the scrambled match score for each sequence
-            z_scores_per_sequence = [calculate_z_score(scrambled_best_matches[i], best_matches[i]) for i in
-                                     range(len(best_matches))]
-            phylogenetically_averaged_best_match_z_score = sum(z_scores_per_sequence) / len(z_scores_per_sequence)
+            # Determine the z-score between the real match score and the distribution of the scrambled match scores
+            phylogenetically_averaged_best_match_z_score = calculate_z_score(PAM_scores_scrambled, PAM_score_real)
 
             # Save the final z-score for this <pwm> and this <gene_id>
             curr_gene_z_scores[motif_name] = phylogenetically_averaged_best_match_z_score.item()

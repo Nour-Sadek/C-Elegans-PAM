@@ -6,9 +6,8 @@ import sys
 
 # Constants
 
-PFM_DIR = "./20250615154045_JASPAR2024_individual_matrices_1110029_jaspar"
 SPECIES = "caenorhabditis_elegans"  # or "saccharomyces_cerevisiae" but only with TF
-MOTIF_TYPE = "TF"  # or "RBP"
+MOTIF_TYPE = "RBP"  # "TF" or "RBP"
 
 
 # Read in PFMs from JASPAR
@@ -98,13 +97,14 @@ if __name__ == "__main__":
     if SPECIES == "caenorhabditis_elegans" and MOTIF_TYPE == "RBP":
 
         # Reading in the information
-        rbp_info = pd.read_excel("./Caenorhabditis_elegans_2025_06_16_5_03_am/RBP_Information.xlsx",
+        rbp_info = pd.read_excel("./Caenorhabditis_elegans_2025_07_08_11_58_am/RBP_Information.xlsx",
                                  usecols=["Motif_ID", "RBP_Name"])
         rbp_info = rbp_info[rbp_info["Motif_ID"] != "."]
+        rbp_info = rbp_info.drop_duplicates()
 
         for motif_id in rbp_info["Motif_ID"].unique():
             file_name = f"{motif_id}.txt"
-            dir_name = "./Caenorhabditis_elegans_2025_06_16_5_03_am/pwms_all_motifs"
+            dir_name = "./Caenorhabditis_elegans_2025_07_08_11_58_am/pwms_all_motifs"
             if file_name in os.listdir(dir_name):
                 path = os.path.join(dir_name, file_name)
                 # Get the motif_name

@@ -52,13 +52,14 @@ def get_gene_info_from_request(all_gene_info: dict) -> dict:
     return filtered_gene_info
 
 
-def fetch_ranged_sequence(start, end, strand, chromosome, length, species, seq_type):
+def fetch_ranged_sequence(start: int, end: int, strand: int, chromosome: str, length: int, species: str, seq_type: str) -> str:
     """Return a string of length <length> that represents the <seq_type> associated with the gene whose position in
     <chromosome> for <species> is bounded by the <start> and <end> coordinates, with strand <strand>.
 
-    <seq_type> can be either 'promoter' or '3UTR'
+    <seq_type> can be either "promoter" or "3UTR"
     <strand> can be either +1 (forward) or -1 (reverse)
     """
+
     # Finding out the coordinate bounds for <seq_type> based on the <start> and <end> coordinates of the gene
     if (seq_type == "3UTR" and strand == -1) or (seq_type == "promoter" and strand == 1):
         seq_start = start - length
@@ -80,13 +81,15 @@ def fetch_ranged_sequence(start, end, strand, chromosome, length, species, seq_t
     return sequence
 
 
-def accumulate_source_orthologs_info(gene_ids, print_progress=True):
+def accumulate_source_orthologs_info(gene_ids: list[str], print_progress: bool = True) -> None:
     """For every protein-coding gene in <gene_ids> save a json file in <general_info> directory that stores enough
     information about the gene in order to be able to fetch the DNA sequences of the promoter and 3'UTR associated
     to it in the format:
     key: species name (string)
     value: dictionary that contains information about the start and end coordinates, strand, and chromosome.
     """
+
+    os.makedirs("./general_info", exist_ok=True)
     num_genes = len(gene_ids)
     i = 1
     for gene_id in gene_ids:
@@ -130,7 +133,7 @@ def accumulate_source_orthologs_info(gene_ids, print_progress=True):
             i = i + 1
 
 
-def get_source_orthologs_sequences(gene_ids, print_progress=True) -> None:
+def get_source_orthologs_sequences(gene_ids: list[str], print_progress: bool = True) -> None:
     """For every protein-coding gene in <gene_ids> save a json file in <promoter_sequences> or <3UTR_sequences>
     directories that stores the promoter and 3'UTR DNA sequences respectively associated to each ortholog gene in the
     format:
@@ -141,6 +144,9 @@ def get_source_orthologs_sequences(gene_ids, print_progress=True) -> None:
     function <accumulate_source_orthologs_info>, which store the required information for each ortholog species to
     extract the associated promoter and 3'UTR sequences.
     """
+
+    os.makedirs("./promoter_sequences", exist_ok=True)
+    os.makedirs("./3UTR_sequences", exist_ok=True)
     num_genes = len(gene_ids)
     i = 1
     for gene_id in gene_ids:

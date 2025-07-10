@@ -1,5 +1,34 @@
 # Determining Phylogenetically Averaged Motif (PAM) score representations for the non-coding regions, promoters and 3'UTRs, of Caenorhabditis Elegans
 
+The project aims to replicate what was previously done for Saccharomyces Cerevisiae and human promoters and 3'UTRs (Alam et al. 2023), 
+but for the corresponding non-coding regions for Caenorhabditis Elegans genes, as the resources to test the hypotheses generated 
+by the promoter and 3'UTR representations are available for that model organism.
+
+Briefly, the authors mapped promoter and 3'UTR sequences to a feature space/representation that would be informative about 
+the function of the gene associated with those non-coding regions. They used Position Weight Matrices (PWMs) of Transcription 
+Factors (TFs) for promoters and RNA-Binding Proteins (RBPs) for 3'UTRs. PWMs can be considered as equivalent to a kernel of 
+a 1d convolutional layer of shape 4 nucleotides x length of the motif where the values for each nucleotide at each position
+is the probability of that nucleotide being in that position so that the DNA sequence matches the consensus sequence 
+needed for confidence binding of the RBP/TF to that sequence. To determine the confidence of the specific TF/RBP binding, 
+its corresponding PWM is scanned over the sequence of interest and the output of the scan at each position gives a confidence 
+score where higher scores means higher probability of binding and lower scores means lower probability of binding. 
+
+The aim is to scan the PWMs of consensus TF and RBP motifs over promoter and 3'UTR sequences respectively where a high score 
+after convolutional scanning could be interpreted as high probability of that motif binding to that region, which could be used 
+to infer function of the gene associated with that non-coding region. However, there are a lot of false positives in terms of 
+sequence matching, and so phylogenetic averaging was introduced where function, more so than sequence, would be conserved 
+across homologs, and so scanning the PWM over the non-coding region and its orthologs, then averaging the scores over the 
+orthologues - thus calculating a Phylogenetically Averaged Motif, or PAM score - is thought to potentially allow the interpretation 
+of the averaged high match score as real biological signal rather than false positive. 
+
+There is a representation vector for every non-coding region and PWM motif combo where that representation is built by 
+averaging the maximum PWM score over all orthologous sequences of the gene that corresponds to that non-coding region. 
+
+The goal, after clustering and visualization of the representation heatmap, is to inspect clusters enriched for various GO 
+categories, and test hypotheses regarding the potential function of unknown genes based on how its representation clustered 
+with the representation of other genes.
+
+
 ## Table of Contents
 
 1. Collection of the promoter and 3'UTR sequences for Caenorhabtidis Elegans and homologous species
@@ -86,17 +115,13 @@ in the convolutional scanning were done and compared:
 to the final inclusion of 
   - 5596 genes and a total of 322077 sequences for promoters
   - 5705 genes and a total of 372990 sequences for 3'UTRs
-- The second scanning was done over genes that had a minimum of 5 homologous species from the nematoda species. This lead 
+- The second scanning was done over genes that had a minimum of 5 homologous nematoda species. The nematoda 
+species are: `["ascaris_summ", "brugia_malayi", "caenorhabditis_brenneri", "caenorhabditis_briggsae", 
+"caenorhabditis_elegans", "caenorhabditis_japonica", "caenorhabditis_remanei", "loa_loa", "necator_americanus", 
+"onchocerca_volvulus", "pristionchus_pacificus", "strongyloides_ratti", "trichinella_spiralis", "trichuris_muris"]`. This lead 
 to the final inclusion of
   - 8233 genes and a total of 67938 sequences for promoters
   - 8467 genes and a total of 70623 sequences for 3'UTRs
-
-The nematoda species are:
-`[
-    "ascaris_summ", "brugia_malayi", "caenorhabditis_brenneri", "caenorhabditis_briggsae", "caenorhabditis_elegans",
-    "caenorhabditis_japonica", "caenorhabditis_remanei", "loa_loa", "necator_americanus", "onchocerca_volvulus",
-    "pristionchus_pacificus", "strongyloides_ratti", "trichinella_spiralis", "trichuris_muris"
-]`
 
 These two different cutoffs were to decide whether including more evolutionarily distant species would lead to better PAM 
 score representations than including fewer, but evolutionarily closer species.
@@ -119,13 +144,36 @@ those z-scores were used in building the final representation.
 ### 3.3 Visualization of the promoter and 3'UTR PAM score representations
 
 The output of the script essentially generates a dataframe populated with PAM scores between the promoter/3'UTR sequences
-(rows) and the motifs (columns). Cluster 3 was used to cluster the PAM scores. The pythonic package Bio.Cluster was used 
+(rows) and the motifs (columns). Cluster 3 software was used to cluster the PAM scores. The pythonic package Bio.Cluster was used 
 where, similarly to Alam et al. 2023 paper, the columns were median centered, followed by performing hierarchical clustering 
 on both genes and motifs using un-centered correlation, average linkage. This provides multiple output files, which are read 
 by the software Java TreeView to allow for proper visualization of the PAM scores representation heatmap.
 
+### 4. Showcase of the output heatmaps
+
+These are the output heatmaps from Java TreeView where the heatmap of clustered promoter representations is on the left 
+and of clustered 3'UTR representations is on the right.
+
+For when a minimum of 10 orthologous sequences from the metazoan compara per gene was the cut-off:
+
+<img width="1038" height="1060" alt="Image" src="https://github.com/user-attachments/assets/055c2340-141d-43cf-8f67-ab2c1b71e7ef" />
+
+For when a minimum of 5 orthologous sequences from the nemotoda species per gene was the cut-off:
+
+<img width="988" height="1069" alt="Image" src="https://github.com/user-attachments/assets/64bd67b8-fc51-4a06-854b-850e88d4c537" />
+
 ## 6. References
 
-- Alam, A., Duncan, A. G., Mitchell, J. A., & Moses, A. M. (biorxiv). Functional similarity of non-coding regions is revealed in phylogenetic average motif score representations. https://doi.org/10.1101/2023.04.09.536185
-- Alok J. Saldanha, Java Treeview—extensible visualization of microarray data, Bioinformatics, Volume 20. https://jtreeview.sourceforge.net/
-- M. J. L. de Hoon, S. Imoto, J. Nolan, and S. Miyano: Open Source Clustering Software. Bioinformatics, 20 (9): 1453--1454 (2004). http://bonsai.hgc.jp/~mdehoon/software/cluster/
+Alam A, et al. Functional similarity of non-coding regions is revealed in phylogenetic average motif score representations. biorxiv. 2023. doi: https://doi.org/10.1101/2023.04.09.536185
+
+Alok J. Saldanha, Java Treeview—extensible visualization of microarray data, Bioinformatics, Volume 20. https://jtreeview.sourceforge.net/
+
+M. J. L. de Hoon, S. Imoto, J. Nolan, and S. Miyano: Open Source Clustering Software. Bioinformatics, 20 (9): 1453--1454 (2004). http://bonsai.hgc.jp/~mdehoon/software/cluster/
+
+Ray D, et al. A compendium of RNA-binding motifs for decoding gene regulation. Nature. 2013 Jul 11;499(7457):172-7. doi: 10.1038/nature12311. 
+PubMed PMID: 23846655. https://cisbp-rna.ccbr.utoronto.ca/
+
+Rauluseviciute I, et al. JASPAR 2024: 20th anniversary of the open-access database of transcription factor binding profiles. 
+Nucleic Acids Res. 2024 Jan 5;52(D1):D174-D182.; doi: 10.1093/nar/gkad1059. https://jaspar.elixir.no/
+
+Sarah CD, et al. Ensembl 2025. Nucleic Acids Research, Volume 53, Issue D1, 6 January 2025, Pages D948–D957, https://doi.org/10.1093/nar/gkae1071

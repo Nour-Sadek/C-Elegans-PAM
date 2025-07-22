@@ -13,7 +13,7 @@ import os
 # Constants
 
 SOURCE_SPECIES = "caenorhabditis_elegans"
-MOTIF_TYPE = "RBP"  # "TF" for promoter or "RBP" for 3UTR
+MOTIF_TYPE = "TF"  # "TF" for promoter or "RBP" for 3UTR
 PWM_FILE_PATH = f"./PWMs_of_{MOTIF_TYPE}_for_{SOURCE_SPECIES}.pkl"
 PROMOTERS_DIR = "./promoter_sequences"
 UTRs_DIR = "./3UTR_sequences"
@@ -25,8 +25,10 @@ UTR_LENGTH = 200
 #     "ascaris_summ", "brugia_malayi", "caenorhabditis_brenneri", "caenorhabditis_briggsae", "caenorhabditis_elegans",
 #     "caenorhabditis_japonica", "caenorhabditis_remanei", "loa_loa", "necator_americanus", "onchocerca_volvulus",
 #     "pristionchus_pacificus", "strongyloides_ratti", "trichinella_spiralis", "trichuris_muris"
-# ]
-HOMOLOGOUS_SPECIES = []  # If all species were considered
+# ]  # only consider nemotoda species
+# HOMOLOGOUS_SPECIES = []  # consider all metazoan species
+HOMOLOGOUS_SPECIES = ["caenorhabditis_brenneri", "caenorhabditis_briggsae", "caenorhabditis_elegans",
+                      "caenorhabditis_japonica", "caenorhabditis_remanei"]  # only consider caenorhabditis species
 
 
 def one_hot_encode(sequence: str) -> torch.tensor:
@@ -319,12 +321,13 @@ if __name__ == "__main__":
     with open(PWM_FILE_PATH, "rb") as file:
         pwms = pickle.load(file)
 
-    seq_type = "3UTR"
+    seq_type = "promoter"
     # Build the representation (heatmap of genes and motifs but returned as a dictionary)
     representation = build_representation(pwms, seq_type, 5)
 
     # Save the representation as a json file
-    file_name = f"{seq_type}_representation_for_{SOURCE_SPECIES}.json"
+    # file_name = f"{seq_type}_representation_for_{SOURCE_SPECIES}.json"
+    file_name = f"{seq_type}_representation_using_caenorhabditis_species_only.json"
     with open(file_name, "w") as file:
         json.dump(representation, file, indent=4)
 
@@ -348,4 +351,13 @@ if __name__ == "__main__":
     eligible_genes, total_num_genes = determine_eligible_genes(UTRs_DIR, "3UTR", 5)
     print(f"There are {eligible_genes} genes, with {total_num_genes} total 3'UTR sequences")
     # There are 8467 genes, with 70623 total 3'UTR sequences (min_homologous_species = 5)
+
+    # <HOMOLOGOUS_SPECIES> includes the 5 caenorhabditis species
+    eligible_genes, total_num_genes = determine_eligible_genes(PROMOTERS_DIR, "promoter", 5)
+    print(f"There are {eligible_genes} genes, with {total_num_genes} total promoter sequences")
+    # There are 3515 genes, with 17575 total promoter sequences
+
+    eligible_genes, total_num_genes = determine_eligible_genes(UTRs_DIR, "3UTR", 5)
+    print(f"There are {eligible_genes} genes, with {total_num_genes} total 3'UTR sequences")
+    # There are 3908 genes, with 19540 total 3'UTR sequences
     """

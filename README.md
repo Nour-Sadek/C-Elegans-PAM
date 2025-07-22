@@ -110,7 +110,7 @@ entire length of the sequences get scanned, but this trades off the speed of the
 ### 3.1 How the sequences were filtered
 
 On top of including sequences that only had the four letter A, G, T, and C, different additional cutoffs to which genes are incorporated 
-in the convolutional scanning were done and compared:
+in the convolutional scanning were implemented and compared:
 - The first scanning was done over genes that had a minimum of 10 homologous species from the metazoan compara. This lead 
 to the final inclusion of 
   - 5596 genes and a total of 322077 sequences for promoters
@@ -125,6 +125,13 @@ to the final inclusion of
 
 These two different cutoffs were to decide whether including more evolutionarily distant species would lead to better PAM 
 score representations than including fewer, but evolutionarily closer species.
+
+There is also a third scanning that was done over genes that had orthologous sequences for all the 5 caenorhabditis 
+species `["caenorhabditis_brenneri", "caenorhabditis_briggsae", "caenorhabditis_elegans", "caenorhabditis_japonica", 
+"caenorhabditis_remanei"]` only, and that is because these four species are the closest evolutionarily to caenorhabditis 
+elegans, so it is interesting to see how much the representations will differ. This lead to the final inclusion of:
+- 3515 genes and a total of 17575 sequences for promoters
+- 3908 genes and a total of 19540 sequences for 3'UTRs
 
 ### 3.2 Workflow of the convolutional scanning and normalization
 
@@ -161,6 +168,10 @@ For when a minimum of 10 orthologous sequences from the metazoan compara per gen
 For when a minimum of 5 orthologous sequences from the nemotoda species per gene was the cut-off:
 
 <img width="988" height="1069" alt="Image" src="https://github.com/user-attachments/assets/64bd67b8-fc51-4a06-854b-850e88d4c537" />
+
+For when orthologous sequences from the 5 caenorhabditis species per gene was the cut-off:
+
+<img width="998" height="1069" alt="Image" src="https://github.com/user-attachments/assets/18fd183b-53b8-4ff0-969c-f439bb2f0def" />
 
 ## 6. References
 

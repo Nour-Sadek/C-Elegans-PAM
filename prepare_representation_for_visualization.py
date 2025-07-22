@@ -3,11 +3,11 @@ import requests
 import json
 from Bio import Cluster
 
-REPRESENTATION_PATH = "./caenorhabditis_only_3UTR_representation_for_caenorhabditis_elegans.json"
-REPRESENTATION_NAME = "caenorhabditis_only_3UTR"
+REPRESENTATION_PATH = "./promoter_representation_considering_nematoda.json"
+REPRESENTATION_NAME = "considering_nematoda_promoter"
 ENSEMBL_REST = "https://rest.ensembl.org"
 SOURCE_SPECIES = "caenorhabditis_elegans"
-GENE_INFO_DICT_AVAILABLE = False
+GENE_INFO_DICT_AVAILABLE = True
 GENE_INFO_PATH = "./gene_ids_names_descriptions.json"
 
 
@@ -22,11 +22,15 @@ def get_gene_descriptions_names(gene_ids: list[str]) -> dict[str: list[str]]:
     If that url doesn't contain corresponding values for a gene_id of either, they are replaced with an empty string."""
 
     gene_info = {"gene_id": [], "gene_name": [], "description": []}
+    i = 1
     for gene_id in gene_ids:
         # Get gene info for source species
         url = f"{ENSEMBL_REST}/lookup/id/{gene_id}?expand=1;species={SOURCE_SPECIES}"
         r = requests.get(url, headers={"content-Type": "application/json"})
         if r.ok:
+            if i % 1000 == 0:
+                print(f"{i} gene id information have been fetched.")
+            i = i + 1
             # Get the common gene name, if it is available, else the canonical transcript name
             request = r.json()
             if "display_name" in request:
@@ -70,6 +74,7 @@ if __name__ == "__main__":
         # load the gene ids, names, and descriptions dictionary
         with open(GENE_INFO_PATH, "r") as file:
             gene_info = json.load(file)
+        gene_info = pd.DataFrame(gene_info)
 
     # ==== Load in the representation json file and prepare it for loading into the Cluster 3 software ====
     
@@ -96,6 +101,8 @@ if __name__ == "__main__":
 
     # Save as a .txt file
     final_df.to_csv(f"{REPRESENTATION_NAME}_representation.txt", sep="\t")
+
+    print("The representation .txt file has been saved.")
     
     # ==== Use Cluster 3 to cluster both the genes (rows) and motifs (columns) ====
     
@@ -110,3 +117,5 @@ if __name__ == "__main__":
 
     # Save to input into Java TreeView
     record.save(f"{REPRESENTATION_NAME}_representation", gene_tree, motif_tree)
+
+    print("The Java TreeView files have been generated and saved.")
